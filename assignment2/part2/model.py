@@ -40,7 +40,21 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        self.W_ix = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_ih = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_i = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_fx = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_fh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_f = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_gx = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_gh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_c = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_ox = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_oh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_o = nn.Parameter(torch.Tensor(self.hidden_dim))
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -62,7 +76,10 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        bound = 1.0 / math.sqrt(self.hidden_size)
+        for weight in self.parameters():
+            weight.data.uniform_(-bound, bound)
+        self.b_f += 1.0
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -85,7 +102,25 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        input_len, batch_size, hidden_dim = embeds.size()
+        h_t = torch.zeros(batch_size, self.hidden_size).to(embeds.device)
+        c_t = torch.zeros(batch_size, self.hidden_size).to(embeds.device)
+
+        output = []
+        for t in range(input_len):
+            x_t = embeds[t, :, :]
+            i_t = torch.sigmoid(x_t @ self.W_ix + h_t @ self.W_ih + self.b_i)
+            f_t = torch.sigmoid(x_t @ self.W_fx + h_t @ self.W_fh + self.b_f)
+            g_t = torch.tanh(x_t @ self.W_cx + h_t @ self.W_ch + self.b_c)
+            o_t = torch.sigmoid(x_t @ self.W_ox + h_t @ self.W_oh + self.b_o)
+            c_t = f_t * c_t + i_t * g_t
+            h_t = o_t * torch.tanh(c_t)
+
+            output.append(h_t.unsqueeze(0))
+        output = torch.cat(output, dim=0)
+        output = output.transpose(0, 1).contiguous()
+        assert output.shape == (input_len, batch_size, self.hidden_size), "Output shape is wrong !!!"
+        return output
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -115,6 +150,9 @@ class TextGenerationModel(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         pass
+        self.embedding = nn.Embedding(num_embeddings=args.vocabulary_size,embedding_dim=args.embedding_size)
+        self.LSTM = LSTM(lstm_hidden_dim=args.lstm_hidden_dim, embedding_size=args.embedding_size)
+        self.classifier = nn.Linear(args.lstm_hidden_dim, args.vocabulary_size)
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -135,6 +173,11 @@ class TextGenerationModel(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         pass
+        embed = self.embedding(x)
+        output = self.LSTM(embed)
+        logits = self.classifier(output[-1])
+
+        return logits
         #######################
         # END OF YOUR CODE    #
         #######################
