@@ -258,16 +258,15 @@ def test_model(model, batch_size, data_dir, device, seed):
     #######################
     print("Testing model ...")
     set_seed(seed)
-    test_results = {"gaussian_noise_transform": [], #{},
-                    "gaussian_blur_transform": [], #{},
-                    "contrast_transform": [], #{},
-                    "jpeg_transform": []}
-    #{},}
+    test_results = {"gaussian_noise_transform": [],  # {},
+                    "gaussian_blur_transform": [],  # {},
+                    "contrast_transform": [],  # {},
+                    "jpeg_transform": []}  # {},}
     model.to(device)
     test_dataset = get_test_set(data_dir, augmentation=None)
     test_dataloader = DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
     test_acc = evaluate_model(model, test_dataloader, device)
-    test_results["clean"] = test_acc
+    test_results["clean"] = [test_acc] * 5
 
     ''' gaussian_noise_transform'''
     print("testing gaussian_noise_transform")
@@ -308,6 +307,7 @@ def test_model(model, batch_size, data_dir, device, seed):
 
 
 def plot_model_acc(test_results, plot_filename):
+    print("starting plotting ..")
     x = [s for s in range(1, 6)]
     sizes = (10, 5)
     plt.rcParams["figure.figsize"] = sizes
@@ -315,6 +315,7 @@ def plot_model_acc(test_results, plot_filename):
     plt.plot(x, test_results["gaussian_blur_transform"], '-g', label='gaussian_blur_transform')
     plt.plot(x, test_results["contrast_transform"], '-y', label='contrast_transform')
     plt.plot(x, test_results["jpeg_transform"], '-k', label='jpeg_transform')
+    plt.plot(x, test_results["clean"], '-r', label='without corruption')
     plt.grid(axis='x', color='0.95')
     plt.legend()
 
@@ -348,6 +349,7 @@ def main(model_name, lr, batch_size, epochs, data_dir, seed):
     # PUT YOUR CODE HERE  #
     #######################
     device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    print("DEVICE: ", device)
     set_seed(seed)
     checkpoint_name = model_name + "_debugging" + ".ckpt"
     pretrained_filename = checkpoint_name  # os.path.join(CHECKPOINT_PATH, checkpoint_name)
@@ -362,10 +364,11 @@ def main(model_name, lr, batch_size, epochs, data_dir, seed):
 
     test_results_filename = model_name + '_test_results.json'
     if os.path.isfile(test_results_filename):
-        test_results = json.load(test_results_filename)
+        with open(test_results_filename, 'r') as f:
+            test_results = json.loads(f.read())
     else:
         test_results = test_model(model, batch_size, data_dir, device, seed)
-        with open(model_name + '_test_results.json', 'w') as fp:
+        with open(test_results_filename, 'w') as fp:
             json.dump(test_results, fp, ensure_ascii=False, indent=4)
     plot_model_acc(test_results, model_name + "_test_acc_plot.png")
 
@@ -394,7 +397,7 @@ if __name__ == '__main__':
                         help='Minibatch size')
 
     # Other hyperparameters
-    parser.add_argument('--epochs', default=3, type=int,
+    parser.add_argument('--epochs', default=150, type=int,
                         help='Max number of epochs')
     parser.add_argument('--seed', default=42, type=int,
                         help='Seed to use for reproducing results')
