@@ -23,6 +23,7 @@ import argparse
 import numpy as np
 from copy import deepcopy
 import matplotlib.pyplot as plt
+import time
 
 import torch
 import torch.nn as nn
@@ -120,9 +121,13 @@ def train_model(model_name, lr, batch_size, epochs, data_dir, checkpoint_name, d
     #######################
 
     # Load the datasets
+    num_workers = min(2, os.cpu_count())
+    pin_memory = True if torch.cuda.is_available() else False
     train_dataset, val_dataset = get_train_validation_set(data_dir)
-    train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-    validation_dataloader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False)
+    train_dataloader = DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True, drop_last=True,
+                                  num_workers=num_workers, pin_memory=pin_memory)
+    validation_dataloader = DataLoader(dataset=val_dataset, batch_size=batch_size, shuffle=False, drop_last=False,
+                                       num_workers=num_workers, pin_memory=pin_memory)
 
     model = get_model(model_name)
     model = model.to(device)
@@ -141,6 +146,7 @@ def train_model(model_name, lr, batch_size, epochs, data_dir, checkpoint_name, d
     val_losses, train_losses = [], []
     model.train()
     for epoch in range(epochs):
+        epoch_start = time.time()
         train_running_loss = 0.0
         train_predictions = np.empty((0, 10), int)
         train_targets = np.empty((0), int)
@@ -175,8 +181,9 @@ def train_model(model_name, lr, batch_size, epochs, data_dir, checkpoint_name, d
             targets = np.append(targets, val_labels.cpu().detach().numpy(), axis=0)
         val_losses.append(val_running_loss / len(validation_dataloader))
         val_epoch_acc = accuracy(predictions=predictions, targets=targets)
+        epoch_end = time.time()
         print("epochs: ", epoch, "val_epoch_acc = ", val_epoch_acc, "train_epoch_acc = ", train_epoch_acc,
-              "val_loss=", val_loss.item(), "train_loss=", loss.item())
+              "val_loss=", val_loss.item(), "train_loss=", loss.item(), "time/epoch = ", epoch_end-epoch_start)
         val_accuracies.append(val_epoch_acc)
         if val_epoch_acc > best_val_acc:
             best_model = deepcopy(model)
@@ -351,7 +358,7 @@ def main(model_name, lr, batch_size, epochs, data_dir, seed):
     device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
     print("DEVICE: ", device)
     set_seed(seed)
-    checkpoint_name = model_name + "_debugging" + ".ckpt"
+    checkpoint_name = model_name + ".ckpt"
     pretrained_filename = checkpoint_name  # os.path.join(CHECKPOINT_PATH, checkpoint_name)
     print("pretrained_filename == ", pretrained_filename)
     if os.path.isfile(pretrained_filename):
