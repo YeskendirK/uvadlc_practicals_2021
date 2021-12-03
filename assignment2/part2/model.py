@@ -17,6 +17,8 @@
 import math
 import torch
 import torch.nn as nn
+import string
+import random
 
 
 class LSTM(nn.Module):
@@ -50,7 +52,7 @@ class LSTM(nn.Module):
 
         self.W_gx = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
         self.W_gh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
-        self.b_c = nn.Parameter(torch.Tensor(self.hidden_dim))
+        self.b_g = nn.Parameter(torch.Tensor(self.hidden_dim))
 
         self.W_ox = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
         self.W_oh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
@@ -76,10 +78,10 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        bound = 1.0 / math.sqrt(self.hidden_size)
+        bound = 1.0 / math.sqrt(self.hidden_dim)
         for weight in self.parameters():
             weight.data.uniform_(-bound, bound)
-        self.b_f += 1.0
+        self.b_f.data = torch.add(self.b_f.data, 1)
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -103,23 +105,26 @@ class LSTM(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         input_len, batch_size, hidden_dim = embeds.size()
-        h_t = torch.zeros(batch_size, self.hidden_size).to(embeds.device)
-        c_t = torch.zeros(batch_size, self.hidden_size).to(embeds.device)
+        h_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+        c_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
 
         output = []
         for t in range(input_len):
             x_t = embeds[t, :, :]
             i_t = torch.sigmoid(x_t @ self.W_ix + h_t @ self.W_ih + self.b_i)
             f_t = torch.sigmoid(x_t @ self.W_fx + h_t @ self.W_fh + self.b_f)
-            g_t = torch.tanh(x_t @ self.W_cx + h_t @ self.W_ch + self.b_c)
+            g_t = torch.tanh(x_t @ self.W_gx + h_t @ self.W_gh + self.b_g)
             o_t = torch.sigmoid(x_t @ self.W_ox + h_t @ self.W_oh + self.b_o)
             c_t = f_t * c_t + i_t * g_t
             h_t = o_t * torch.tanh(c_t)
 
             output.append(h_t.unsqueeze(0))
+
         output = torch.cat(output, dim=0)
-        output = output.transpose(0, 1).contiguous()
-        assert output.shape == (input_len, batch_size, self.hidden_size), "Output shape is wrong !!!"
+        # print("output shape 1 = ", output.shape)
+        # # output = output.transpose(0, 1).contiguous()
+        # print("output shape = ", output.shape)
+        assert output.shape == (input_len, batch_size, self.hidden_dim), "Output shape is wrong !!!"
         return output
         #######################
         # END OF YOUR CODE    #
@@ -149,8 +154,9 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
-        self.embedding = nn.Embedding(num_embeddings=args.vocabulary_size,embedding_dim=args.embedding_size)
+        self.args = args
+        self.embedding = nn.Embedding(num_embeddings=args.vocabulary_size, embedding_dim=args.embedding_size)
+        # self.LSTM = nn.LSTM(hidden_size=args.lstm_hidden_dim, input_size=args.embedding_size)
         self.LSTM = LSTM(lstm_hidden_dim=args.lstm_hidden_dim, embedding_size=args.embedding_size)
         self.classifier = nn.Linear(args.lstm_hidden_dim, args.vocabulary_size)
         #######################
@@ -172,10 +178,13 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
         embed = self.embedding(x)
         output = self.LSTM(embed)
-        logits = self.classifier(output[-1])
+        # LSTM output shape: [input length, batch size, hidden dimension]
+        
+
+        #logits = self.classifier(output[-1])
+        logits = self.classifier(output)
 
         return logits
         #######################
@@ -199,6 +208,17 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
+        # sample_output = []
+        # all_chars = list(string.printable)
+        # for batch_id in range(batch_size):
+        #     start_letter = random.choice(all_chars)
+        #     start_idx = self.args._char_to_ix[start_letter]
+        #     batch_output = []
+        #     for i in range(sample_length):
+
+        #
+        # with torch.no_grad():
+
         pass
         #######################
         # END OF YOUR CODE    #
