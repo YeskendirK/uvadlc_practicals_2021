@@ -183,7 +183,7 @@ def train_model(model_name, lr, batch_size, epochs, data_dir, checkpoint_name, d
         val_epoch_acc = accuracy(predictions=predictions, targets=targets)
         epoch_end = time.time()
         print("epochs: ", epoch, "val_epoch_acc = ", val_epoch_acc, "train_epoch_acc = ", train_epoch_acc,
-              "val_loss=", val_loss.item(), "train_loss=", loss.item(), "time/epoch = ", epoch_end-epoch_start)
+              "val_loss=", val_loss.item(), "train_loss=", loss.item(), "time/epoch = ", epoch_end - epoch_start)
         val_accuracies.append(val_epoch_acc)
         if val_epoch_acc > best_val_acc:
             best_model = deepcopy(model)
@@ -332,6 +332,106 @@ def plot_model_acc(test_results, plot_filename):
     plt.clf()
 
 
+def plot_CE():
+    error_rates = {}
+    model_names = ["resnet18", "resnet34", "vgg11", "vgg11_bn", "densenet121"]
+    for model_name in model_names:
+        test_results_filename = model_name + '_test_results.json'
+        with open(test_results_filename, 'r') as f:
+            model_test_results = json.loads(f.read())
+        error_rates[model_name] = {}
+        for corruption, accuracies in model_test_results.items():
+            sum_error = len(accuracies) - sum(accuracies)
+            error_rates[model_name][corruption] = sum_error
+
+    all_CE = {}
+    for model_name in model_names:
+        all_CE[model_name] = measure_CE(model_name, error_rates)
+
+    gaussian_noise_transform = [corruptions['gaussian_noise_transform'] for model_name, corruptions in all_CE.items()]
+    print("gaussian_noise_transform = ", gaussian_noise_transform)
+    gaussian_blur_transform = [corruptions['gaussian_blur_transform'] for model_name, corruptions in all_CE.items()]
+    contrast_transform = [corruptions['contrast_transform'] for model_name, corruptions in all_CE.items()]
+    jpeg_transform = [corruptions['jpeg_transform'] for model_name, corruptions in all_CE.items()]
+
+    x = np.arange(len(model_names))
+    fig, ax = plt.subplots(figsize=(8, 6))  # figsize=(10, 7)
+    width = 0.1
+    rects1 = ax.bar(x + -2 * width, gaussian_noise_transform, width, label='gaussian_noise_transform')
+    rects2 = ax.bar(x + -1 * width, gaussian_blur_transform, width, label='gaussian_blur_transform')
+    rects3 = ax.bar(x + 0 * width, contrast_transform, width, label='contrast_transform')
+    rects4 = ax.bar(x + 1 * width, jpeg_transform, width, label='jpeg_transform')
+
+
+    fig.tight_layout()
+    ax.set_ylabel('CE')
+    ax.set_title('CE by model and corruption')
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_names)
+    ax.legend()
+    plot_filename = "CE_plot.png"
+    plt.savefig('./' + plot_filename)
+    print("plot saved to ./", plot_filename)
+
+
+def plot_RCE():
+    error_rates = {}
+    model_names = ["resnet18", "resnet34", "vgg11", "vgg11_bn", "densenet121"]
+    for model_name in model_names:
+        test_results_filename = model_name + '_test_results.json'
+        with open(test_results_filename, 'r') as f:
+            model_test_results = json.loads(f.read())
+        error_rates[model_name] = {}
+        for corruption, accuracies in model_test_results.items():
+            sum_error = len(accuracies) - sum(accuracies)
+            error_rates[model_name][corruption] = sum_error
+
+    all_RCE = {}
+    for model_name in model_names:
+        all_RCE[model_name] = measure_RCE(model_name, error_rates)
+
+    gaussian_noise_transform = [corruptions['gaussian_noise_transform'] for model_name, corruptions in all_RCE.items()]
+    gaussian_blur_transform = [corruptions['gaussian_blur_transform'] for model_name, corruptions in all_RCE.items()]
+    contrast_transform = [corruptions['contrast_transform'] for model_name, corruptions in all_RCE.items()]
+    jpeg_transform = [corruptions['jpeg_transform'] for model_name, corruptions in all_RCE.items()]
+
+    x = np.arange(len(model_names))
+    fig, ax = plt.subplots(figsize=(8, 6))  # figsize=(10, 7)
+    width = 0.1
+    rects1 = ax.bar(x + -2 * width, gaussian_noise_transform, width, label='gaussian_noise_transform')
+    rects2 = ax.bar(x + -1 * width, gaussian_blur_transform, width, label='gaussian_blur_transform')
+    rects3 = ax.bar(x + 0 * width, contrast_transform, width, label='contrast_transform')
+    rects4 = ax.bar(x + 1 * width, jpeg_transform, width, label='jpeg_transform')
+
+    fig.tight_layout()
+    ax.set_ylabel('RCE')
+    ax.set_title('RCE by model and corruption')
+    ax.set_xticks(x)
+    ax.set_xticklabels(model_names)
+    ax.legend()
+    plot_filename = "RCE_plot.png"
+    plt.savefig('./' + plot_filename)
+    print("plot saved to ./", plot_filename)
+
+
+def measure_RCE(model_name, error_rates):
+    model_RCE = {}
+    for corruption, sum_error in error_rates[model_name].items():
+        if corruption == "clean":
+            continue
+        model_RCE[corruption] = (sum_error - error_rates[model_name]['clean']) / (
+                    error_rates["resnet18"][corruption] - error_rates["resnet18"]['clean'])
+
+    return model_RCE
+
+
+def measure_CE(model_name, error_rates):
+    model_CE = {}
+    for corruption, sum_error in error_rates[model_name].items():
+        model_CE[corruption] = sum_error / error_rates["resnet18"][corruption]
+    return model_CE
+
+
 def main(model_name, lr, batch_size, epochs, data_dir, seed):
     """
     Function that summarizes the training and testing of a model.
@@ -378,6 +478,11 @@ def main(model_name, lr, batch_size, epochs, data_dir, seed):
         with open(test_results_filename, 'w') as fp:
             json.dump(test_results, fp, ensure_ascii=False, indent=4)
     plot_model_acc(test_results, model_name + "_test_acc_plot.png")
+
+    plot_CE_RCE = False
+    if plot_CE_RCE:
+        plot_CE()
+        plot_RCE()
 
     #######################
     # END OF YOUR CODE    #
