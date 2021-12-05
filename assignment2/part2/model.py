@@ -17,14 +17,17 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import string
 import random
+import numpy as np
 
 
 class LSTM(nn.Module):
     """
     Own implementation of LSTM cell.
     """
+
     def __init__(self, lstm_hidden_dim, embedding_size):
         """
         Initialize all parameters of the LSTM class.
@@ -137,6 +140,7 @@ class TextGenerationModel(nn.Module):
     It should take care of the character embedding,
     and linearly maps the output of the LSTM to your vocabulary.
     """
+
     def __init__(self, args):
         """
         Initializing the components of the TextGenerationModel.
@@ -178,12 +182,12 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
+        # x shape = [input length, batch size]
         embed = self.embedding(x)
         output = self.LSTM(embed)
         # LSTM output shape: [input length, batch size, hidden dimension]
-        
 
-        #logits = self.classifier(output[-1])
+        # logits = self.classifier(output[-1])
         logits = self.classifier(output)
 
         return logits
@@ -208,18 +212,38 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        # sample_output = []
-        # all_chars = list(string.printable)
-        # for batch_id in range(batch_size):
-        #     start_letter = random.choice(all_chars)
-        #     start_idx = self.args._char_to_ix[start_letter]
-        #     batch_output = []
-        #     for i in range(sample_length):
+        print("starting sampling ...")
+        start_letters_ix = torch.randint(self.args.vocabulary_size, (batch_size,))  # shape [batch_size]
+        curr_sample_ix = start_letters_ix.unsqueeze(0)  # shape = [1, batch_size]
+        output_ix = curr_sample_ix  # shape =  [1, batch_size]
+        for i in range(sample_length):
+            next_sample = self.forward(curr_sample_ix)  # next_sample shape = [1, batch_size, vocab_size]
+            if temperature == 0:
+                next_sample_ix = torch.argmax(next_sample, dim=2)
+            else:
+                next_sample = F.softmax(next_sample / temperature, dim=2)
+                next_sample_ix = torch.multinomial(next_sample[0], 1)
+                next_sample_ix = next_sample_ix.squeeze()
+                next_sample_ix = next_sample_ix.unsqueeze(0)
+            output_ix = torch.cat((output_ix, next_sample_ix))
+            curr_sample_ix = next_sample_ix
 
-        #
-        # with torch.no_grad():
+        # output_ix shape: [sample_length, batch_size]
 
-        pass
+        new_output_ix = torch.transpose(output_ix, 0, 1)
+        new_output_ix = new_output_ix.tolist()
+        for batch_id in range(len(new_output_ix)):
+            for char_id in range(len(new_output_ix[batch_id])):
+                x = new_output_ix[batch_id][char_id]
+                new_output_ix[batch_id][char_id] = self.args._ix_to_char[x]
+
+        for batch_id in range(len(new_output_ix)):
+            new_output_ix[batch_id] = ''.join(new_output_ix[batch_id])
+
+        print("Sampling completed ... ")
+
+        return new_output_ix
+
         #######################
         # END OF YOUR CODE    #
         #######################

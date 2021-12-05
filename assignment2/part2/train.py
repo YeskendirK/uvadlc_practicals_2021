@@ -43,6 +43,12 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def write_to_file(sample_sentences, filename):
+    with open(filename, 'w') as f:
+        for sentence in sample_sentences:
+            f.write("%s\n" % sentence)
+
+
 def train(args):
     """
     Trains an LSTM model on a text dataset
@@ -74,8 +80,7 @@ def train(args):
                              collate_fn=text_collate_fn)
     # Create model
     args.vocabulary_size = dataset.vocabulary_size
-    # args._char_to_ix = dataset._char_to_ix
-    # print("char_to_ix", args._char_to_ix)
+    args._ix_to_char = dataset._ix_to_char
     print("Vocabulary size = ", args.vocabulary_size)
     # model_args = Namespace(vocabulary_size= dataset.vocabulary_size, embedding_size= args.embedding_size,
     #                        lstm_hidden_dim=args.lstm_hiddend_dim)
@@ -86,12 +91,11 @@ def train(args):
     # Training loop
     all_losses = []
     print(len(data_loader))
+    epochs_sampling = [1, 5, args.num_epochs]
     for epoch in range(args.num_epochs):
         print("Epoch = ", epoch)
         epoch_loss = 0
         for i, sentence in enumerate(data_loader, 0):
-            if i%40 == 0:
-                print("Epoch = ", epoch, " i = ", i, '/', len(data_loader))
             inputs, targets = sentence
             # print("Shape of inputs and targets: ", inputs.shape, targets.shape)
             inputs, targets = inputs.to(args.device), targets.to(args.device)
@@ -110,8 +114,30 @@ def train(args):
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
             epoch_loss += loss
-        all_losses.append(epoch_loss)
-        print("epoch: ", epoch, " loss = ", epoch_loss)
+        epoch_loss /= len(data_loader)
+        all_losses.append(epoch_loss.item())
+        print("epoch: ", epoch + 1, " loss = ", epoch_loss.item())
+        if epoch + 1 in epochs_sampling:
+            print("epoch = ", epoch + 1, "sampling now")
+            lens = [15, 30, 45]
+            for sample_len in lens:
+                sample_sentences = model.sample(batch_size=5, sample_length=sample_len, temperature=0)
+                training_filename = args.txt_file.split("/")[1].split(".")[0]
+                sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
+                                                                                                   epoch + 1, 0,
+                                                                                                   sample_len)
+                write_to_file(sample_sentences, sample_filename)
+                print("samples saved to ", sample_filename)
+    temps = [0.5, 1, 2]
+    for t in temps:
+        sample_sentences = model.sample(batch_size=5, sample_length=30, temperature=t)
+        training_filename = args.txt_file.split("/")[1].split(".")[0]
+        sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
+                                                                                           args.num_epochs, t, 30)
+        write_to_file(sample_sentences, sample_filename)
+        print("samples saved to ", sample_filename)
+    pretrained_model_name = "text_gen_model.ckpt"
+    torch.save(model.state_dict(), pretrained_model_name)
     print("Training completed")
     return model, all_losses
     #######################
@@ -142,12 +168,12 @@ if __name__ == "__main__":
     print(args)
     print("==" * 10)
     model, all_losses = train(args)
+    '''
     print("plotting ...")
-    fig, axs = plt.subplots(1)
     x = [e + 1 for e in range(len(all_losses))]
-    axs[0].plot(x, all_losses, label='loss')
-    axs[0].set_title("Training loss")
-    axs[0].legend()
-    fig.tight_layout()
-    fig.savefig('./rnn_loss_debugging.png')
+    plt.plot(x, all_losses, label='loss')
+    plt.set_title("Training loss")
+    plt.legend()
+    plt.savefig('./rnn_loss_debugging.png')
     print("plotting completed!")
+    '''
