@@ -49,14 +49,14 @@ class MLP(nn.Module):
         super().__init__()
         self.n_inputs = n_inputs
         self.n_hidden = n_hidden
-        self.n_outpus = n_outputs
+        self.n_outputs = n_outputs
         layers_list = []
         in_features = n_inputs
         for out_features in self.n_hidden:
             layers_list.append(nn.Linear(in_features, out_features))
             layers_list.append(nn.ReLU())
             in_features = out_features
-        layers_list.append(nn.Linear(out_features, self.n_classes))
+        layers_list.append(nn.Linear(out_features, self.n_outputs))
         self.layers = nn.Sequential(*layers_list)
         #######################
         # END OF YOUR CODE    #
@@ -120,6 +120,7 @@ class GNN(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         pass
+
         #######################
         # END OF YOUR CODE    #
         #######################
