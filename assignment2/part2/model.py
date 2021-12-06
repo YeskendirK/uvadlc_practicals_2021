@@ -217,6 +217,7 @@ class TextGenerationModel(nn.Module):
         curr_sample_ix = start_letters_ix.unsqueeze(0)  # shape = [1, batch_size]
         output_ix = curr_sample_ix  # shape =  [1, batch_size]
         for i in range(sample_length):
+            curr_sample_ix = curr_sample_ix.to(self.args.device)
             next_sample = self.forward(curr_sample_ix)  # next_sample shape = [1, batch_size, vocab_size]
             if temperature == 0:
                 next_sample_ix = torch.argmax(next_sample, dim=2)
@@ -225,7 +226,7 @@ class TextGenerationModel(nn.Module):
                 next_sample_ix = torch.multinomial(next_sample[0], 1)
                 next_sample_ix = next_sample_ix.squeeze()
                 next_sample_ix = next_sample_ix.unsqueeze(0)
-            output_ix = torch.cat((output_ix, next_sample_ix))
+            output_ix = torch.cat((output_ix, next_sample_ix.cpu()))
             curr_sample_ix = next_sample_ix
 
         # output_ix shape: [sample_length, batch_size]
