@@ -43,10 +43,14 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def write_to_file(sample_sentences, filename):
-    with open(filename, 'w') as f:
-        for sentence in sample_sentences:
-            f.write("%s\n" % sentence)
+def accuracy(predictions, targets):
+    correct = 0
+    for idx in range(len(targets)):
+        pred_class = np.argmax(predictions[idx], axis=0)
+        if pred_class == targets[idx]:
+            correct += 1
+    acc = correct / len(targets)
+    return acc
 
 
 def train(args):
@@ -91,7 +95,8 @@ def train(args):
     criterion = nn.CrossEntropyLoss()
     # Training loop
     all_losses = []
-    print(len(data_loader))
+    all_acc = []
+    print("data_loader length", len(data_loader))
     epochs_sampling = [1, 5, args.num_epochs]
 
     training_filename = args.txt_file.split("/")[1].split(".")[0]
@@ -100,21 +105,21 @@ def train(args):
     for epoch in range(args.num_epochs):
         print("Epoch = ", epoch)
         epoch_loss = 0
+        epoch_predictions = np.empty((0, args.vocabulary_size), int)
+        epoch_targets = np.empty((0), int)
         for i, sentence in enumerate(data_loader, 0):
             inputs, targets = sentence
-            # print("Shape of inputs and targets: ", inputs.shape, targets.shape)
             inputs, targets = inputs.to(args.device), targets.to(args.device)
             optimizer.zero_grad()
-            loss = 0
             predictions = model(inputs)
-            # print("shape of predictions and targets: ",predictions.shape, targets.shape)
-            # loss = criterion(predictions, targets)
-            print(predictions.shape, targets.shape)
-            for ch_idx in range(args.input_seq_length):
-                # print(predictions[ch_idx].shape, targets[ch_idx].shape)
-                print("shapes of predictions and targets: ", predictions[ch_idx].shape, targets[ch_idx].shape)
-                l = criterion(predictions[ch_idx], targets[ch_idx])
-                loss += l
+
+            predictions, targets = predictions.view(-1, args.vocabulary_size), targets.view(-1)
+
+            epoch_predictions = np.append(epoch_predictions, predictions.cpu().detach().numpy(), axis=0)
+            epoch_targets = np.append(epoch_targets, targets.cpu().detach().numpy(), axis=0)
+
+            loss = criterion(predictions, targets)
+
             loss /= args.input_seq_length
             loss.backward()
 
@@ -123,18 +128,15 @@ def train(args):
             epoch_loss += loss
         epoch_loss /= len(data_loader)
         all_losses.append(epoch_loss.item())
-        print("epoch: ", epoch + 1, " loss = ", epoch_loss.item())
+        epoch_acc = accuracy(predictions=epoch_predictions, targets=epoch_targets)
+        all_acc.append(epoch_acc)
+        print("epoch: ", epoch + 1, " loss = ", epoch_loss.item(), " accuracy = ", epoch_acc)
         if epoch + 1 in epochs_sampling:
             print("epoch = ", epoch + 1, "sampling now")
             lens = [15, 30, 45]
             for sample_len in lens:
                 sample_sentences = model.sample(batch_size=5, sample_length=sample_len, temperature=0)
-                # training_filename = args.txt_file.split("/")[1].split(".")[0]
-                # sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
-                #                                                                                    epoch + 1, 0,
-                #                                                                                    sample_len)
-                sample_title = "epoch_{}_temperature_{}_sample_length_{}".format(epoch + 1, 0, sample_len)
-                # write_to_file(sample_sentences, sample_filename)
+                sample_title = "epoch_{}_temperature_{}_sample_length_{}:\n".format(epoch + 1, 0, sample_len)
                 myfile.write(sample_title)
                 for sentence in sample_sentences:
                     myfile.write("%s\n" % sentence)
@@ -143,11 +145,8 @@ def train(args):
     temps = [0.5, 1, 2]
     for t in temps:
         sample_sentences = model.sample(batch_size=5, sample_length=30, temperature=t)
-        # training_filename = args.txt_file.split("/")[1].split(".")[0]
-        # sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
-        #                                                                                    args.num_epochs, t, 30)
-        # write_to_file(sample_sentences, sample_filename)
-        sample_title = "epoch_{}_temperature_{}_sample_length_{}".format(args.num_epochs, t, 30)
+
+        sample_title = "epoch_{}_temperature_{}_sample_length_{}:\n".format(args.num_epochs, t, 30)
         myfile.write(sample_title)
         for sentence in sample_sentences:
             myfile.write("%s\n" % sentence)
@@ -157,7 +156,7 @@ def train(args):
     pretrained_model_name = "text_gen_model.ckpt"
     torch.save(model.state_dict(), pretrained_model_name)
     print("Training completed")
-    return model, all_losses
+    return model, all_losses, all_acc
     #######################
     # END OF YOUR CODE    #
     #######################
@@ -185,12 +184,21 @@ if __name__ == "__main__":
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU if available, else use CPU
     print(args)
     print("==" * 10)
-    model, all_losses = train(args)
+    model, all_losses, all_acc = train(args)
 
-    print("plotting ...")
+    print("plotting losses ...")
     x = [e + 1 for e in range(len(all_losses))]
     plt.plot(x, all_losses, label='loss')
-    plt.set_title("Training loss")
+    plt.title("Training loss")
     plt.legend()
-    plt.savefig('./rnn_loss_debugging.png')
-    print("plotting completed!")
+    plt.savefig('./text_gen_loss_.png')
+    print("plotting train loss completed!")
+    plt.close()
+
+    print("plotting accuracies ...")
+    x = [e + 1 for e in range(len(all_acc))]
+    plt.plot(x, all_acc, label='accuracy')
+    plt.title("Training accuracy")
+    plt.legend()
+    plt.savefig('./text_gen_accuracy.png')
+    print("plotting train accuracy completed!")
