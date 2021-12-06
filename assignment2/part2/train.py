@@ -85,6 +85,7 @@ def train(args):
     # model_args = Namespace(vocabulary_size= dataset.vocabulary_size, embedding_size= args.embedding_size,
     #                        lstm_hidden_dim=args.lstm_hiddend_dim)
     model = TextGenerationModel(args)
+    model = model.to(args.device)
     # Create optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.CrossEntropyLoss()
@@ -92,6 +93,10 @@ def train(args):
     all_losses = []
     print(len(data_loader))
     epochs_sampling = [1, 5, args.num_epochs]
+
+    training_filename = args.txt_file.split("/")[1].split(".")[0]
+    sample_filename = "samples/{}_samples.txt".format(training_filename)
+    myfile = open(sample_filename, "w")
     for epoch in range(args.num_epochs):
         print("Epoch = ", epoch)
         epoch_loss = 0
@@ -104,8 +109,10 @@ def train(args):
             predictions = model(inputs)
             # print("shape of predictions and targets: ",predictions.shape, targets.shape)
             # loss = criterion(predictions, targets)
+            print(predictions.shape, targets.shape)
             for ch_idx in range(args.input_seq_length):
                 # print(predictions[ch_idx].shape, targets[ch_idx].shape)
+                print("shapes of predictions and targets: ", predictions[ch_idx].shape, targets[ch_idx].shape)
                 l = criterion(predictions[ch_idx], targets[ch_idx])
                 loss += l
             loss /= args.input_seq_length
@@ -122,20 +129,31 @@ def train(args):
             lens = [15, 30, 45]
             for sample_len in lens:
                 sample_sentences = model.sample(batch_size=5, sample_length=sample_len, temperature=0)
-                training_filename = args.txt_file.split("/")[1].split(".")[0]
-                sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
-                                                                                                   epoch + 1, 0,
-                                                                                                   sample_len)
-                write_to_file(sample_sentences, sample_filename)
-                print("samples saved to ", sample_filename)
+                # training_filename = args.txt_file.split("/")[1].split(".")[0]
+                # sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
+                #                                                                                    epoch + 1, 0,
+                #                                                                                    sample_len)
+                sample_title = "epoch_{}_temperature_{}_sample_length_{}".format(epoch + 1, 0, sample_len)
+                # write_to_file(sample_sentences, sample_filename)
+                myfile.write(sample_title)
+                for sentence in sample_sentences:
+                    myfile.write("%s\n" % sentence)
+                myfile.write("\n")
+                print("samples ", sample_title, " written to ", sample_filename)
     temps = [0.5, 1, 2]
     for t in temps:
         sample_sentences = model.sample(batch_size=5, sample_length=30, temperature=t)
-        training_filename = args.txt_file.split("/")[1].split(".")[0]
-        sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
-                                                                                           args.num_epochs, t, 30)
-        write_to_file(sample_sentences, sample_filename)
-        print("samples saved to ", sample_filename)
+        # training_filename = args.txt_file.split("/")[1].split(".")[0]
+        # sample_filename = "samples/{}_epoch_{}_temperature_{}_sample_length_{}.txt".format(training_filename,
+        #                                                                                    args.num_epochs, t, 30)
+        # write_to_file(sample_sentences, sample_filename)
+        sample_title = "epoch_{}_temperature_{}_sample_length_{}".format(args.num_epochs, t, 30)
+        myfile.write(sample_title)
+        for sentence in sample_sentences:
+            myfile.write("%s\n" % sentence)
+        myfile.write("\n")
+        print("samples ", sample_title, " written to ", sample_filename)
+    myfile.close()
     pretrained_model_name = "text_gen_model.ckpt"
     torch.save(model.state_dict(), pretrained_model_name)
     print("Training completed")
@@ -168,7 +186,7 @@ if __name__ == "__main__":
     print(args)
     print("==" * 10)
     model, all_losses = train(args)
-    '''
+
     print("plotting ...")
     x = [e + 1 for e in range(len(all_losses))]
     plt.plot(x, all_losses, label='loss')
@@ -176,4 +194,3 @@ if __name__ == "__main__":
     plt.legend()
     plt.savefig('./rnn_loss_debugging.png')
     print("plotting completed!")
-    '''
