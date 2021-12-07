@@ -102,6 +102,7 @@ def train(args):
     training_filename = args.txt_file.split("/")[1].split(".")[0]
     sample_filename = "samples/{}_samples.txt".format(training_filename)
     myfile = open(sample_filename, "w")
+
     for epoch in range(args.num_epochs):
         print("Epoch = ", epoch)
         epoch_loss = 0
@@ -151,11 +152,12 @@ def train(args):
         print("epoch: ", epoch + 1, " loss = ", epoch_loss.item(), " accuracy = ", epoch_acc)
         if epoch + 1 in epochs_sampling:
             print("epoch = ", epoch + 1, "sampling now")
-            lens = [15, 30, 45]
+            lens = [15, 30, 200]
             for sample_len in lens:
                 sample_sentences = model.sample(batch_size=5, sample_length=sample_len, temperature=0)
                 sample_title = "epoch_{}_temperature_{}_sample_length_{}:\n".format(epoch + 1, 0, sample_len)
                 myfile.write(sample_title)
+                myfile.write("==========================\n")
                 for sentence in sample_sentences:
                     myfile.write("%s\n" % sentence)
                 myfile.write("\n")
