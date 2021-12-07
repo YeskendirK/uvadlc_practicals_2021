@@ -57,14 +57,14 @@ def permute_indices(molecules: Batch) -> Batch:
     permuted.batch = permuted.batch[permu]
     permuted.edge_index = (
         permuted.edge_index.cpu()
-        .apply_(translation.get)
-        .to(molecules.edge_index.device)
+            .apply_(translation.get)
+            .to(molecules.edge_index.device)
     )
     return permuted
 
 
 def compute_loss(
-    model: nn.Module, molecules: Batch, criterion: Callable
+        model: nn.Module, molecules: Batch, criterion: Callable
 ) -> torch.Tensor:
     """use the model to predict the target determined by molecules. loss computed by criterion.
 
@@ -88,11 +88,14 @@ def compute_loss(
     if model_name == "MLP":
         inputs = get_mlp_features(molecules)
         labels = get_labels(molecules)
+        outputs = model(inputs)
+        outputs = torch.squeeze(outputs)
     elif model_name == "GNN":
-        pass
+        inputs = get_node_features(molecules)
+        labels = get_labels(molecules)
+        outputs = model(inputs, molecules.edge_index, molecules.edge_attr, molecules.batch)
+        outputs = torch.squeeze(outputs)
 
-    outputs = model(inputs)
-    outputs = torch.squeeze(outputs)
     loss = criterion(outputs, labels)
     #######################
     # END OF YOUR CODE    #
@@ -101,7 +104,7 @@ def compute_loss(
 
 
 def evaluate_model(
-    model: nn.Module, data_loader: DataLoader, criterion: Callable, permute: bool
+        model: nn.Module, data_loader: DataLoader, criterion: Callable, permute: bool
 ) -> float:
     """
     Performs the evaluation of the model on a given dataset.
@@ -144,7 +147,7 @@ def evaluate_model(
 
 
 def train(
-    model: nn.Module, lr: float, batch_size: int, epochs: int, seed: int, data_dir: str
+        model: nn.Module, lr: float, batch_size: int, epochs: int, seed: int, data_dir: str
 ):
     """a full training cycle of an mlp / gnn on qm9.
 
@@ -215,9 +218,9 @@ def train(
     best_val_loss = 0
     print(model)
     model.train()
+    print("length of train_dataloader = ", len(train_dataloader))
     for epoch in range(epochs):
         train_running_loss = 0.0
-        print("length of train_dataloader = ", len(train_dataloader))
         for i, data in enumerate(train_dataloader, 0):
             data = data.to(model.device)
             optimizer.zero_grad()
@@ -239,8 +242,8 @@ def train(
         if epoch_val_loss < best_val_loss:
             best_model = deepcopy(model)
             best_val_loss = epoch_val_loss
-    print(train_losses)
-    print(val_losses)
+    print("train losses: ", train_losses)
+    print("validation losses: ", val_losses)
     # TODO: Test best model
 
     test_loss = evaluate_model(model, test_dataloader, criterion, permute=False)
@@ -288,7 +291,7 @@ def main(**kwargs):
     plt.plot(x, val_losses, label='validation')
     plt.title("validation losses")
     plt.legend()
-    plt.savefig("val_losses_debugging.png")
+    plt.savefig("{}_val_losses.png".format(which_model))
     plt.close()
     print("plotting completed!")
     print("test_loss = ", test_loss)

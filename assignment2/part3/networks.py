@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric.nn as geom_nn
+from torch_geometric.nn import RGCNConv, MFConv, global_add_pool
 
 
 class MLP(nn.Module):
@@ -95,12 +96,12 @@ class GNN(nn.Module):
     """
 
     def __init__(
-        self,
-        n_node_features: int,
-        n_edge_features: int,
-        n_hidden: int,
-        n_output: int,
-        num_convolution_blocks: int,
+            self,
+            n_node_features: int,
+            n_edge_features: int,
+            n_hidden: int,
+            n_output: int,
+            num_convolution_blocks: int,
     ) -> None:
         """create the gnn
 
@@ -119,19 +120,22 @@ class GNN(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        super().__init__()
+
+        self.num_convolution_blocks = num_convolution_blocks
+        self.embedding = nn.Linear(n_node_features, n_hidden)
+        self.RGCNConv = RGCNConv(n_hidden, n_hidden, n_edge_features)
+        self.MFConv = MFConv(n_hidden, n_hidden)
+        self.fc1 = nn.Linear(n_hidden, n_hidden)
+        self.fc2 = nn.Linear(n_hidden, n_output)
+        self.relu = nn.ReLU()
 
         #######################
         # END OF YOUR CODE    #
         #######################
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        edge_index: torch.Tensor,
-        edge_attr: torch.Tensor,
-        batch_idx: torch.Tensor,
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, edge_attr: torch.Tensor, batch_idx: torch.Tensor,
+                ) -> torch.Tensor:
         """
         Args:
             x: Input features per node
@@ -150,7 +154,18 @@ class GNN(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        
+        edge_attr = edge_attr.argmax(-1)
+        x = self.embedding(x)
+        for _ in range(self.num_convolution_blocks):
+            x = self.relu(x)
+            x = self.RGCNConv(x, edge_index, edge_attr)
+            x = self.relu(x)
+            x = self.MFConv(x, edge_index)
+        x = global_add_pool(x, batch_idx)
+        x = self.fc1(x)
+        x = self.relu(x)
+        out = self.fc2(x)
+
         #######################
         # END OF YOUR CODE    #
         #######################
