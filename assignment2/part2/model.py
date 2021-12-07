@@ -89,12 +89,13 @@ class LSTM(nn.Module):
         # END OF YOUR CODE    #
         #######################
 
-    def forward(self, embeds):
+    def forward(self, embeds, prev_state=None):
         """
         Forward pass of LSTM.
 
         Args:
             embeds: embedded input sequence with shape [input length, batch size, hidden dimension].
+            prev_state: initial_state or output state of previous LSTM
 
         TODO:
           Specify the LSTM calculations on the input sequence.
@@ -102,14 +103,15 @@ class LSTM(nn.Module):
         The output needs to span all time steps, (not just the last one),
         so the output shape is [input length, batch size, hidden dimension].
         """
-        #
-        #
         #######################
         # PUT YOUR CODE HERE  #
         #######################
         input_len, batch_size, hidden_dim = embeds.size()
-        h_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
-        c_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+        if prev_state is None:
+            h_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+            c_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+        else:
+            h_t, c_t = prev_state
 
         output = []
         for t in range(input_len):
@@ -128,7 +130,7 @@ class LSTM(nn.Module):
         # # output = output.transpose(0, 1).contiguous()
         # print("output shape = ", output.shape)
         assert output.shape == (input_len, batch_size, self.hidden_dim), "Output shape is wrong !!!"
-        return output
+        return output, [h_t, c_t]
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -167,12 +169,13 @@ class TextGenerationModel(nn.Module):
         # END OF YOUR CODE    #
         #######################
 
-    def forward(self, x):
+    def forward(self, x, prev_state):
         """
         Forward pass.
 
         Args:
             x: input
+            prev_state: previous state
 
         TODO:
         Embed the input,
@@ -183,14 +186,16 @@ class TextGenerationModel(nn.Module):
         # PUT YOUR CODE HERE  #
         #######################
         # x shape = [input length, batch size]
+        # print("embedding input shape = ", x.shape)
         embed = self.embedding(x)
-        output = self.LSTM(embed)
+        # print("embedding output shape = ", embed.shape)
+        output, state = self.LSTM(embed, prev_state)
         # LSTM output shape: [input length, batch size, hidden dimension]
 
         # logits = self.classifier(output[-1])
         logits = self.classifier(output)
 
-        return logits
+        return logits, state
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -216,9 +221,10 @@ class TextGenerationModel(nn.Module):
         start_letters_ix = torch.randint(self.args.vocabulary_size, (batch_size,))  # shape [batch_size]
         curr_sample_ix = start_letters_ix.unsqueeze(0)  # shape = [1, batch_size]
         output_ix = curr_sample_ix  # shape =  [1, batch_size]
+        state = None
         for i in range(sample_length):
             curr_sample_ix = curr_sample_ix.to(self.args.device)
-            next_sample = self.forward(curr_sample_ix)  # next_sample shape = [1, batch_size, vocab_size]
+            next_sample, state = self.forward(curr_sample_ix, state)  # next_sample shape = [1, batch_size, vocab_size]
             if temperature == 0:
                 next_sample_ix = torch.argmax(next_sample, dim=2)
             else:

@@ -107,13 +107,31 @@ def train(args):
         epoch_loss = 0
         epoch_predictions = np.empty((0, args.vocabulary_size), int)
         epoch_targets = np.empty((0), int)
+        state = None
         for i, sentence in enumerate(data_loader, 0):
+            # if i%10 == 0:
+            #     print("Epoch = ", epoch, " i = ", i)
             inputs, targets = sentence
             inputs, targets = inputs.to(args.device), targets.to(args.device)
             optimizer.zero_grad()
-            predictions = model(inputs)
+            # predictions, state = model(inputs, state)
+            state = None
+            predictions = None
+            # print("inputs shape = ", inputs.shape)  # [30, batch_size, embed_dimension]
+            for char_idx in range(args.input_seq_length):
+                input_char = torch.unsqueeze(inputs[char_idx], 0)
+                # print(" one input shape = ", input_char.shape)  # [30, batch_size, embed_dimension]
+                pred_char, state = model(input_char, state)
+                # print(" one prediction shape = ", pred_char.shape) # [1, batch_size, hidden_dimension]
+                if predictions is None:
+                    predictions = pred_char
+                else:
+                    predictions = torch.cat((predictions, pred_char), 0)
+            # print("predictions shape: ", predictions.shape)
+            # print("targets shape: ", targets.shape)
 
             predictions, targets = predictions.view(-1, args.vocabulary_size), targets.view(-1)
+
 
             epoch_predictions = np.append(epoch_predictions, predictions.cpu().detach().numpy(), axis=0)
             epoch_targets = np.append(epoch_targets, targets.cpu().detach().numpy(), axis=0)
