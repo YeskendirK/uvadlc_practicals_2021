@@ -18,6 +18,7 @@ from __future__ import absolute_import, division, print_function
 import argparse
 from copy import deepcopy
 from typing import Callable
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -56,14 +57,14 @@ def permute_indices(molecules: Batch) -> Batch:
     permuted.batch = permuted.batch[permu]
     permuted.edge_index = (
         permuted.edge_index.cpu()
-        .apply_(translation.get)
-        .to(molecules.edge_index.device)
+            .apply_(translation.get)
+            .to(molecules.edge_index.device)
     )
     return permuted
 
 
 def compute_loss(
-    model: nn.Module, molecules: Batch, criterion: Callable
+        model: nn.Module, molecules: Batch, criterion: Callable
 ) -> torch.Tensor:
     """use the model to predict the target determined by molecules. loss computed by criterion.
 
@@ -83,7 +84,19 @@ def compute_loss(
     #######################
     # PUT YOUR CODE HERE  #
     #######################
+    model_name = model.__class__.__name__
+    if model_name == "MLP":
+        inputs = get_mlp_features(molecules)
+        labels = get_labels(molecules)
+        outputs = model(inputs)
+        outputs = torch.squeeze(outputs)
+    elif model_name == "GNN":
+        inputs = get_node_features(molecules)
+        labels = get_labels(molecules)
+        outputs = model(inputs, molecules.edge_index, molecules.edge_attr, molecules.batch)
+        outputs = torch.squeeze(outputs)
 
+    loss = criterion(outputs, labels)
     #######################
     # END OF YOUR CODE    #
     #######################
@@ -91,7 +104,7 @@ def compute_loss(
 
 
 def evaluate_model(
-    model: nn.Module, data_loader: DataLoader, criterion: Callable, permute: bool
+        model: nn.Module, data_loader: DataLoader, criterion: Callable, permute: bool
 ) -> float:
     """
     Performs the evaluation of the model on a given dataset.
@@ -116,7 +129,16 @@ def evaluate_model(
     #######################
     # PUT YOUR CODE HERE  #
     #######################
-
+    model.eval()
+    total_loss = 0
+    for i, data in enumerate(data_loader, 0):
+        if permute:
+            data = permute_indices(data)
+        data = data.to(model.device)
+        loss = compute_loss(model, data, criterion)
+        loss.backward()
+        total_loss += loss.item()
+    avg_loss = total_loss / len(data_loader)
     #######################
     # END OF YOUR CODE    #
     #######################
@@ -125,7 +147,7 @@ def evaluate_model(
 
 
 def train(
-    model: nn.Module, lr: float, batch_size: int, epochs: int, seed: int, data_dir: str
+        model: nn.Module, lr: float, batch_size: int, epochs: int, seed: int, data_dir: str
 ):
     """a full training cycle of an mlp / gnn on qm9.
 
@@ -185,22 +207,55 @@ def train(
     #######################
 
     # TODO: Initialize loss module and optimizer
-    criterion = ...
-    optimizer = ...
+
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=2e-3)
     # TODO: Training loop including validation, using evaluate_model
     # TODO: Do optimization, we used adam with amsgrad. (many should work)
-    val_losses = ...
+    val_losses = []
+    train_losses = []
+    best_model = deepcopy(model)
+    best_val_loss = 0
+    print(model)
+    model.train()
+    print("length of train_dataloader = ", len(train_dataloader))
+    for epoch in range(epochs):
+        train_running_loss = 0.0
+        for i, data in enumerate(train_dataloader, 0):
+            data = data.to(model.device)
+            optimizer.zero_grad()
+            loss = compute_loss(model, data, criterion)
+            loss.backward()
+            optimizer.step()
+            train_running_loss += loss.item()
+
+        train_losses.append(train_running_loss / len(train_dataloader))
+
+        val_running_loss = 0
+        for i, val_data in enumerate(valid_dataloader, 0):
+            val_data = val_data.to(model.device)
+            val_loss = compute_loss(model, val_data, criterion)
+            val_running_loss += val_loss.item()
+        epoch_val_loss = val_running_loss / len(valid_dataloader)
+        val_losses.append(epoch_val_loss)
+        print("epoch = ", epoch, " val_loss = ", epoch_val_loss)
+        if epoch_val_loss < best_val_loss:
+            best_model = deepcopy(model)
+            best_val_loss = epoch_val_loss
+    print("train losses: ", train_losses)
+    print("validation losses: ", val_losses)
     # TODO: Test best model
-    test_loss = ...
+
+    test_loss = evaluate_model(model, test_dataloader, criterion, permute=False)
     # TODO: Test best model against permuted indices
-    permuted_test_loss = ...
+    permuted_test_loss = evaluate_model(model, test_dataloader, criterion, permute=True)
     # TODO: Add any information you might want to save for plotting
-    logging_info = ...
+    logging_info = {"train_losses": train_losses}
 
     #######################
     # END OF YOUR CODE    #
     #######################
-    return model, test_loss, permuted_test_loss, val_losses, logging_info
+    return best_model, test_loss, permuted_test_loss, val_losses, logging_info
 
 
 def main(**kwargs):
@@ -232,6 +287,15 @@ def main(**kwargs):
     )
 
     # plot the loss curve, etc. below.
+    x = [e + 1 for e in range(len(val_losses))]
+    plt.plot(x, val_losses, label='validation')
+    plt.title("validation losses")
+    plt.legend()
+    plt.savefig("{}_val_losses.png".format(which_model))
+    plt.close()
+    print("plotting completed!")
+    print("test_loss = ", test_loss)
+    print("permuted_test_loss = ", permuted_test_loss)
 
 
 if __name__ == "__main__":
