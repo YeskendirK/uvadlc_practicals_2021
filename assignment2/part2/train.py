@@ -17,6 +17,8 @@
 from datetime import datetime
 import argparse
 from tqdm.auto import tqdm
+import matplotlib.pyplot as plt
+# from argparse import Namespace
 
 import torch
 import numpy as np
@@ -41,6 +43,16 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def accuracy(predictions, targets):
+    correct = 0
+    for idx in range(len(targets)):
+        pred_class = np.argmax(predictions[idx], axis=0)
+        if pred_class == targets[idx]:
+            correct += 1
+    acc = correct / len(targets)
+    return acc
+
+
 def train(args):
     """
     Trains an LSTM model on a text dataset
@@ -61,20 +73,110 @@ def train(args):
     #######################
     # PUT YOUR CODE HERE  #
     #######################
+    print("Training is starting ...")
     set_seed(args.seed)
     # Load dataset
     # The data loader returns pairs of tensors (input, targets) where inputs are the
     # input characters, and targets the labels, i.e. the text shifted by one.
     dataset = TextDataset(args.txt_file, args.input_seq_length)
-    data_loader = DataLoader(dataset, args.batch_size, 
+    data_loader = DataLoader(dataset, args.batch_size,
                              shuffle=True, drop_last=True, pin_memory=True,
                              collate_fn=text_collate_fn)
     # Create model
-    model = ...
+    args.vocabulary_size = dataset.vocabulary_size
+    args._ix_to_char = dataset._ix_to_char
+    print("Vocabulary size = ", args.vocabulary_size)
+    # model_args = Namespace(vocabulary_size= dataset.vocabulary_size, embedding_size= args.embedding_size,
+    #                        lstm_hidden_dim=args.lstm_hiddend_dim)
+    model = TextGenerationModel(args)
+    model = model.to(args.device)
     # Create optimizer
-    optimizer = ...
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = nn.CrossEntropyLoss()
     # Training loop
-    pass
+    all_losses = []
+    all_acc = []
+    print("data_loader length", len(data_loader))
+    epochs_sampling = [1, 5, args.num_epochs]
+
+    training_filename = args.txt_file.split("/")[1].split(".")[0]
+    sample_filename = "samples/{}_samples.txt".format(training_filename)
+    myfile = open(sample_filename, "w")
+
+    for epoch in range(args.num_epochs):
+        print("Epoch = ", epoch)
+        epoch_loss = 0
+        epoch_predictions = np.empty((0, args.vocabulary_size), int)
+        epoch_targets = np.empty((0), int)
+        state = None
+        for i, sentence in enumerate(data_loader, 0):
+            # if i%10 == 0:
+            #     print("Epoch = ", epoch, " i = ", i)
+            inputs, targets = sentence
+            inputs, targets = inputs.to(args.device), targets.to(args.device)
+            optimizer.zero_grad()
+            # predictions, state = model(inputs, state)
+            state = None
+            predictions = None
+            # print("inputs shape = ", inputs.shape)  # [30, batch_size, embed_dimension]
+            for char_idx in range(args.input_seq_length):
+                input_char = torch.unsqueeze(inputs[char_idx], 0)
+                # print(" one input shape = ", input_char.shape)  # [30, batch_size, embed_dimension]
+                pred_char, state = model(input_char, state)
+                # print(" one prediction shape = ", pred_char.shape) # [1, batch_size, hidden_dimension]
+                if predictions is None:
+                    predictions = pred_char
+                else:
+                    predictions = torch.cat((predictions, pred_char), 0)
+            # print("predictions shape: ", predictions.shape)
+            # print("targets shape: ", targets.shape)
+
+            predictions, targets = predictions.view(-1, args.vocabulary_size), targets.view(-1)
+
+
+            epoch_predictions = np.append(epoch_predictions, predictions.cpu().detach().numpy(), axis=0)
+            epoch_targets = np.append(epoch_targets, targets.cpu().detach().numpy(), axis=0)
+
+            loss = criterion(predictions, targets)
+
+            loss /= args.input_seq_length
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+            optimizer.step()
+            epoch_loss += loss
+        epoch_loss /= len(data_loader)
+        all_losses.append(epoch_loss.item())
+        epoch_acc = accuracy(predictions=epoch_predictions, targets=epoch_targets)
+        all_acc.append(epoch_acc)
+        print("epoch: ", epoch + 1, " loss = ", epoch_loss.item(), " accuracy = ", epoch_acc)
+        if epoch + 1 in epochs_sampling:
+            print("epoch = ", epoch + 1, "sampling now")
+            lens = [15, 30, 200]
+            for sample_len in lens:
+                sample_sentences = model.sample(batch_size=5, sample_length=sample_len, temperature=0)
+                sample_title = "epoch_{}_temperature_{}_sample_length_{}:\n".format(epoch + 1, 0, sample_len)
+                myfile.write(sample_title)
+                myfile.write("==========================\n")
+                for sentence in sample_sentences:
+                    myfile.write("%s\n" % sentence)
+                myfile.write("\n")
+                print("samples ", sample_title, " written to ", sample_filename)
+    temps = [0.5, 1, 2]
+    for t in temps:
+        sample_sentences = model.sample(batch_size=5, sample_length=30, temperature=t)
+
+        sample_title = "epoch_{}_temperature_{}_sample_length_{}:\n".format(args.num_epochs, t, 30)
+        myfile.write(sample_title)
+        for sentence in sample_sentences:
+            myfile.write("%s\n" % sentence)
+        myfile.write("\n")
+        print("samples ", sample_title, " written to ", sample_filename)
+    myfile.close()
+    pretrained_model_name = "text_gen_model.ckpt"
+    torch.save(model.state_dict(), pretrained_model_name)
+    print("Training completed")
+    return model, all_losses, all_acc
     #######################
     # END OF YOUR CODE    #
     #######################
@@ -100,4 +202,23 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # Use GPU if available, else use CPU
-    train(args)
+    print(args)
+    print("==" * 10)
+    model, all_losses, all_acc = train(args)
+
+    print("plotting losses ...")
+    x = [e + 1 for e in range(len(all_losses))]
+    plt.plot(x, all_losses, label='loss')
+    plt.title("Training loss")
+    plt.legend()
+    plt.savefig('./text_gen_loss_.png')
+    print("plotting train loss completed!")
+    plt.close()
+
+    print("plotting accuracies ...")
+    x = [e + 1 for e in range(len(all_acc))]
+    plt.plot(x, all_acc, label='accuracy')
+    plt.title("Training accuracy")
+    plt.legend()
+    plt.savefig('./text_gen_accuracy.png')
+    print("plotting train accuracy completed!")

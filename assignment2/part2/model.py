@@ -17,12 +17,17 @@
 import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import string
+import random
+import numpy as np
 
 
 class LSTM(nn.Module):
     """
     Own implementation of LSTM cell.
     """
+
     def __init__(self, lstm_hidden_dim, embedding_size):
         """
         Initialize all parameters of the LSTM class.
@@ -40,7 +45,21 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        self.W_ix = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_ih = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_i = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_fx = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_fh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_f = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_gx = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_gh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_g = nn.Parameter(torch.Tensor(self.hidden_dim))
+
+        self.W_ox = nn.Parameter(torch.Tensor(self.embed_dim, self.hidden_dim))
+        self.W_oh = nn.Parameter(torch.Tensor(self.hidden_dim, self.hidden_dim))
+        self.b_o = nn.Parameter(torch.Tensor(self.hidden_dim))
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -62,17 +81,21 @@ class LSTM(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        bound = 1.0 / math.sqrt(self.hidden_dim)
+        for weight in self.parameters():
+            weight.data.uniform_(-bound, bound)
+        self.b_f.data = torch.add(self.b_f.data, 1)
         #######################
         # END OF YOUR CODE    #
         #######################
 
-    def forward(self, embeds):
+    def forward(self, embeds, prev_state=None):
         """
         Forward pass of LSTM.
 
         Args:
             embeds: embedded input sequence with shape [input length, batch size, hidden dimension].
+            prev_state: initial_state or output state of previous LSTM
 
         TODO:
           Specify the LSTM calculations on the input sequence.
@@ -80,12 +103,34 @@ class LSTM(nn.Module):
         The output needs to span all time steps, (not just the last one),
         so the output shape is [input length, batch size, hidden dimension].
         """
-        #
-        #
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        input_len, batch_size, hidden_dim = embeds.size()
+        if prev_state is None:
+            h_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+            c_t = torch.zeros(batch_size, self.hidden_dim).to(embeds.device)
+        else:
+            h_t, c_t = prev_state
+
+        output = []
+        for t in range(input_len):
+            x_t = embeds[t, :, :]
+            i_t = torch.sigmoid(x_t @ self.W_ix + h_t @ self.W_ih + self.b_i)
+            f_t = torch.sigmoid(x_t @ self.W_fx + h_t @ self.W_fh + self.b_f)
+            g_t = torch.tanh(x_t @ self.W_gx + h_t @ self.W_gh + self.b_g)
+            o_t = torch.sigmoid(x_t @ self.W_ox + h_t @ self.W_oh + self.b_o)
+            c_t = f_t * c_t + i_t * g_t
+            h_t = o_t * torch.tanh(c_t)
+
+            output.append(h_t.unsqueeze(0))
+
+        output = torch.cat(output, dim=0)
+        # print("output shape 1 = ", output.shape)
+        # # output = output.transpose(0, 1).contiguous()
+        # print("output shape = ", output.shape)
+        assert output.shape == (input_len, batch_size, self.hidden_dim), "Output shape is wrong !!!"
+        return output, [h_t, c_t]
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -97,6 +142,7 @@ class TextGenerationModel(nn.Module):
     It should take care of the character embedding,
     and linearly maps the output of the LSTM to your vocabulary.
     """
+
     def __init__(self, args):
         """
         Initializing the components of the TextGenerationModel.
@@ -114,17 +160,22 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        self.args = args
+        self.embedding = nn.Embedding(num_embeddings=args.vocabulary_size, embedding_dim=args.embedding_size)
+        # self.LSTM = nn.LSTM(hidden_size=args.lstm_hidden_dim, input_size=args.embedding_size)
+        self.LSTM = LSTM(lstm_hidden_dim=args.lstm_hidden_dim, embedding_size=args.embedding_size)
+        self.classifier = nn.Linear(args.lstm_hidden_dim, args.vocabulary_size)
         #######################
         # END OF YOUR CODE    #
         #######################
 
-    def forward(self, x):
+    def forward(self, x, prev_state):
         """
         Forward pass.
 
         Args:
             x: input
+            prev_state: previous state
 
         TODO:
         Embed the input,
@@ -134,7 +185,17 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        # x shape = [input length, batch size]
+        # print("embedding input shape = ", x.shape)
+        embed = self.embedding(x)
+        # print("embedding output shape = ", embed.shape)
+        output, state = self.LSTM(embed, prev_state)
+        # LSTM output shape: [input length, batch size, hidden dimension]
+
+        # logits = self.classifier(output[-1])
+        logits = self.classifier(output)
+
+        return logits, state
         #######################
         # END OF YOUR CODE    #
         #######################
@@ -156,7 +217,40 @@ class TextGenerationModel(nn.Module):
         #######################
         # PUT YOUR CODE HERE  #
         #######################
-        pass
+        print("starting sampling ...")
+        start_letters_ix = torch.randint(self.args.vocabulary_size, (batch_size,))  # shape [batch_size]
+        curr_sample_ix = start_letters_ix.unsqueeze(0)  # shape = [1, batch_size]
+        output_ix = curr_sample_ix  # shape =  [1, batch_size]
+        state = None
+        for i in range(sample_length):
+            curr_sample_ix = curr_sample_ix.to(self.args.device)
+            next_sample, state = self.forward(curr_sample_ix, state)  # next_sample shape = [1, batch_size, vocab_size]
+            if temperature == 0:
+                next_sample_ix = torch.argmax(next_sample, dim=2)
+            else:
+                next_sample = F.softmax(next_sample / temperature, dim=2)
+                next_sample_ix = torch.multinomial(next_sample[0], 1)
+                next_sample_ix = next_sample_ix.squeeze()
+                next_sample_ix = next_sample_ix.unsqueeze(0)
+            output_ix = torch.cat((output_ix, next_sample_ix.cpu()))
+            curr_sample_ix = next_sample_ix
+
+        # output_ix shape: [sample_length, batch_size]
+
+        new_output_ix = torch.transpose(output_ix, 0, 1)
+        new_output_ix = new_output_ix.tolist()
+        for batch_id in range(len(new_output_ix)):
+            for char_id in range(len(new_output_ix[batch_id])):
+                x = new_output_ix[batch_id][char_id]
+                new_output_ix[batch_id][char_id] = self.args._ix_to_char[x]
+
+        for batch_id in range(len(new_output_ix)):
+            new_output_ix[batch_id] = ''.join(new_output_ix[batch_id])
+
+        print("Sampling completed ... ")
+
+        return new_output_ix
+
         #######################
         # END OF YOUR CODE    #
         #######################
