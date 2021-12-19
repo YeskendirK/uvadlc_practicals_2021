@@ -102,7 +102,7 @@ class VAE(pl.LightningModule):
         x_samples = F.softmax(x_samples, dim=1)
         x_samples = torch.multinomial(x_samples, 1)
         x_samples = x_samples.view(B, 1, H, W)
-        x_sample = x_samples/15
+        x_samples = x_samples/15
         return x_samples
 
     def configure_optimizers(self):
@@ -175,14 +175,14 @@ class GenerateCallback(pl.Callback):
 
 
         x_samples = pl_module.sample(self.batch_size).float()
-        print("hoho shapes ", x_samples.shape, x_samples[0].shape)
+        # print("hoho shapes ", x_samples.shape, x_samples[0].shape)
         # print(x_samples[0])
         # print(x_samples[0])
         # x_samples = torch.randn(self.batch_size, 1, 28, 28)
         # convert 4-bit images to float values
         # x_samples = x_samples / 15
 
-        grid = make_grid(x_samples.cpu(), nrow=8, normalize=True, range=(0,15), pad_value=0.5)
+        grid = make_grid(x_samples.cpu(), nrow=8)
         # , range=(0, 15)
         # grid = grid.permute(1, 2, 0)
 
@@ -243,6 +243,7 @@ def train_vae(args):
         save_image(img_grid,
                    os.path.join(trainer.logger.log_dir, 'vae_manifold.png'),
                    normalize=False)
+        print("vae_manifold saved to ", os.path.join(trainer.logger.log_dir, 'vae_manifold.png'))
 
     return test_result
 

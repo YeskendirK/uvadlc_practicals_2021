@@ -16,6 +16,7 @@
 
 import torch
 from torchvision.utils import make_grid
+import torch.nn.functional as F
 import numpy as np
 import math
 
@@ -97,8 +98,36 @@ def visualize_manifold(decoder, grid_size=20):
     # - torch.meshgrid might be helpful for creating the grid of values
     # - You can use torchvision's function "make_grid" to combine the grid_size**2 images into a grid
     # - Remember to apply a sigmoid after the decoder
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    nd = torch.distributions.Normal(loc=torch.as_tensor([0.]),
+                                    scale=torch.as_tensor([1.]))
+    with torch.no_grad():
+        latent_interpolation = torch.linspace(0.5/grid_size, (grid_size-0.5)/grid_size, 2 * grid_size + 1)
+        latent_grid = torch.stack(
+            (
+                latent_interpolation.repeat(2 * grid_size + 1, 1),
+                latent_interpolation[:, None].repeat(1, 2 * grid_size + 1)
+            ), dim=-1).view(-1, 2)
+        latent_grid = nd.icdf(latent_grid)
+        print("latent_grid shape ", latent_grid.shape)
+        latent_grid = latent_grid
+        image_recon = decoder(latent_grid)
+        image_recon = image_recon.cpu()
+        print("image_recon shape = ", image_recon.shape)
 
-    img_grid = None
-    raise NotImplementedError
+    B, C, H, W = image_recon.shape
+    image_recon = image_recon.permute(0, 2, 3, 1)  # B, H, W, C
+    image_recon = image_recon.reshape(B * W * H, 16)
+    image_recon = F.softmax(image_recon, dim=1)
+    image_recon = torch.multinomial(image_recon, 1)
+    image_recon = image_recon.view(B, 1, H, W)
+    image_recon = image_recon / 15
+    image_recon = image_recon.float()
+    print("image_recon shape = ", image_recon.shape)
+
+    img_grid = make_grid(image_recon.data[:(2 * grid_size + 1) ** 2].cpu(),
+                                          (2 * grid_size + 1))
+    img_grid = torch.unsqueeze(img_grid, dim=0)
+    # raise NotImplementedError
 
     return img_grid
