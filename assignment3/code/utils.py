@@ -17,6 +17,7 @@
 import torch
 from torchvision.utils import make_grid
 import numpy as np
+import math
 
 
 def sample_reparameterize(mean, std):
@@ -33,7 +34,11 @@ def sample_reparameterize(mean, std):
     assert not (std < 0).any().item(), "The reparameterization trick got a negative std as input. " + \
                                        "Are you sure your input is std and not log_std?"
     z = None
-    raise NotImplementedError
+    # raise NotImplementedError
+    device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    esp = torch.randn(*mean.size()).to(device)
+    z = mean + std * esp
+
     return z
 
 
@@ -49,8 +54,11 @@ def KLD(mean, log_std):
               The values represent the Kullback-Leibler divergence to unit Gaussians.
     """
 
-    KLD = None
-    raise NotImplementedError
+    # KLD = log_std.exp().pow(2) + mean.pow(2) - 1 - log_std.pow(2)
+    KLD = torch.square(torch.exp(log_std)) + torch.square(mean) - 1 - 2 * log_std
+    KLD = KLD * 0.5
+    KLD = torch.sum(KLD, -1)  # torch.sum(KLD) * 0.5
+    # raise NotImplementedError
     return KLD
 
 
@@ -63,8 +71,9 @@ def elbo_to_bpd(elbo, img_shape):
     Outputs:
         bpd - The negative log likelihood in bits per dimension for the given image.
     """
-    bpd = None
-    raise NotImplementedError
+    product_dim = img_shape[1] * img_shape[2] * img_shape[3]
+    bpd = elbo * math.log(math.e, 2) / product_dim
+    # raise NotImplementedError
     return bpd
 
 
@@ -93,4 +102,3 @@ def visualize_manifold(decoder, grid_size=20):
     raise NotImplementedError
 
     return img_grid
-
