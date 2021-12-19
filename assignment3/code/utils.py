@@ -34,8 +34,6 @@ def sample_reparameterize(mean, std):
     """
     assert not (std < 0).any().item(), "The reparameterization trick got a negative std as input. " + \
                                        "Are you sure your input is std and not log_std?"
-    z = None
-    # raise NotImplementedError
     device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
     esp = torch.randn(*mean.size()).to(device)
     z = mean + std * esp
@@ -55,11 +53,9 @@ def KLD(mean, log_std):
               The values represent the Kullback-Leibler divergence to unit Gaussians.
     """
 
-    # KLD = log_std.exp().pow(2) + mean.pow(2) - 1 - log_std.pow(2)
     KLD = torch.square(torch.exp(log_std)) + torch.square(mean) - 1 - 2 * log_std
     KLD = KLD * 0.5
     KLD = torch.sum(KLD, -1)  # torch.sum(KLD) * 0.5
-    # raise NotImplementedError
     return KLD
 
 
@@ -74,7 +70,6 @@ def elbo_to_bpd(elbo, img_shape):
     """
     product_dim = img_shape[1] * img_shape[2] * img_shape[3]
     bpd = elbo * math.log(math.e, 2) / product_dim
-    # raise NotImplementedError
     return bpd
 
 
@@ -109,11 +104,9 @@ def visualize_manifold(decoder, grid_size=20):
                 latent_interpolation[:, None].repeat(1, 2 * grid_size + 1)
             ), dim=-1).view(-1, 2)
         latent_grid = nd.icdf(latent_grid)
-        print("latent_grid shape ", latent_grid.shape)
         latent_grid = latent_grid
         image_recon = decoder(latent_grid)
         image_recon = image_recon.cpu()
-        print("image_recon shape = ", image_recon.shape)
 
     B, C, H, W = image_recon.shape
     image_recon = image_recon.permute(0, 2, 3, 1)  # B, H, W, C
@@ -128,6 +121,5 @@ def visualize_manifold(decoder, grid_size=20):
     img_grid = make_grid(image_recon.data[:(2 * grid_size + 1) ** 2].cpu(),
                                           (2 * grid_size + 1))
     img_grid = torch.unsqueeze(img_grid, dim=0)
-    # raise NotImplementedError
 
     return img_grid

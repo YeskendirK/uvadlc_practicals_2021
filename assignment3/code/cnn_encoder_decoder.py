@@ -36,7 +36,6 @@ class CNNEncoder(nn.Module):
         # For an intial architecture, you can use the encoder of Tutorial 9.
         # Feel free to experiment with the architecture yourself, but the one specified here is
         # sufficient for the assignment.
-        #raise NotImplementedError
         super().__init__()
         c_hid = num_filters
 
@@ -66,7 +65,6 @@ class CNNEncoder(nn.Module):
         x = self.net(x)
         mean = self.fc1(x)
         log_std = self.fc2(x)
-        # raise NotImplementedError
         return mean, log_std
 
 
@@ -113,7 +111,6 @@ class CNNDecoder(nn.Module):
                 This should be a logit output *without* a sigmoid applied on it.
                 Shape: [B,num_input_channels,28,28]
         """
-        # raise NotImplementedError
         x = self.linear(z)
         x = x.reshape(x.shape[0], -1, 7, 7)
         x = self.net(x)

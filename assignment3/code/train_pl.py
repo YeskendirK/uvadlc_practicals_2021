@@ -80,7 +80,6 @@ class VAE(pl.LightningModule):
 
         elbo = L_rec + L_reg
         bpd = elbo_to_bpd(elbo, imgs.shape)
-        # raise NotImplementedError
         return L_rec, L_reg, bpd
 
     @torch.no_grad()
@@ -175,26 +174,17 @@ class GenerateCallback(pl.Callback):
 
 
         x_samples = pl_module.sample(self.batch_size).float()
-        # print("hoho shapes ", x_samples.shape, x_samples[0].shape)
-        # print(x_samples[0])
-        # print(x_samples[0])
-        # x_samples = torch.randn(self.batch_size, 1, 28, 28)
-        # convert 4-bit images to float values
-        # x_samples = x_samples / 15
+
 
         grid = make_grid(x_samples.cpu(), nrow=8)
-        # , range=(0, 15)
-        # grid = grid.permute(1, 2, 0)
+
 
         image_name = "samples_" + str(epoch) + ".png"
-        # trainer.logger.experiment.add_image(image_name, x_samples.cpu(), epoch, dataformats="CHW")
-        trainer.logger.experiment.add_image("reconstructions", grid, epoch)#, dataformats="CHW")
+        trainer.logger.experiment.add_image("reconstructions", grid, epoch)
         if self.save_to_disk:
-            # save_image(x_samples.cpu(), os.path.join(trainer.logger.log_dir, image_name))
             save_image(grid, os.path.join(trainer.logger.log_dir, image_name))
             print("sample image saved to ", os.path.join(trainer.logger.log_dir, image_name))
 
-        #raise NotImplementedError
 
 
 def train_vae(args):
