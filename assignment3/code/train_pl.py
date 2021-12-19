@@ -65,11 +65,21 @@ class VAE(pl.LightningModule):
         #   latent space, and decoding.
         # - You might find loss functions defined in torch.nn.functional 
         #   helpful for the reconstruction loss
+        mean, log_std = self.encoder(imgs)
+        std = torch.exp(log_std)
+        z = sample_reparameterize(mean, std)
 
-        L_rec = None
-        L_reg = None
-        bpd = None
-        raise NotImplementedError
+        flat_imgs = torch.flatten(imgs, start_dim=1)
+
+        imgs_recon = self.decoder(z)
+        flat_imgs_recon = torch.flatten(imgs_recon, start_dim=2)
+
+        L_rec = F.cross_entropy(flat_imgs_recon, flat_imgs, reduction='sum') / flat_imgs.shape[0]
+
+        L_reg = torch.mean(KLD(mean, log_std))
+
+        elbo = L_rec + L_reg
+        bpd = elbo_to_bpd(elbo, imgs.shape)
         return L_rec, L_reg, bpd
 
     @torch.no_grad()
@@ -81,8 +91,17 @@ class VAE(pl.LightningModule):
         Outputs:
             x_samples - Sampled, 4-bit images. Shape: [B,C,H,W]
         """
-        x_samples = None
-        raise NotImplementedError
+        samples = torch.randn(batch_size, self.hparams.z_dim).to(self.device)
+        with torch.no_grad():
+            x_samples = self.decoder(samples)
+
+        B, C, H, W = x_samples.shape
+        x_samples = x_samples.permute(0,2,3,1) # B, H, W, C
+        x_samples = x_samples.reshape(B * W * H, 16)
+        x_samples = F.softmax(x_samples, dim=1)
+        x_samples = torch.multinomial(x_samples, 1)
+        x_samples = x_samples.view(B, 1, H, W)
+        x_samples = x_samples/15
         return x_samples
 
     def configure_optimizers(self):
@@ -133,8 +152,8 @@ class GenerateCallback(pl.Callback):
         This function is called after every epoch.
         Call the save_and_sample function every N epochs.
         """
-        if (trainer.current_epoch+1) % self.every_n_epochs == 0:
-            self.sample_and_save(trainer, pl_module, trainer.current_epoch+1)
+        if (trainer.current_epoch + 1) % self.every_n_epochs == 0:
+            self.sample_and_save(trainer, pl_module, trainer.current_epoch + 1)
 
     def sample_and_save(self, trainer, pl_module, epoch):
         """
@@ -153,7 +172,19 @@ class GenerateCallback(pl.Callback):
         # - Use the torchvision function "make_grid" to create a grid of multiple images
         # - Use the torchvision function "save_image" to save an image grid to disk
 
-        raise NotImplementedError
+
+        x_samples = pl_module.sample(self.batch_size).float()
+
+
+        grid = make_grid(x_samples.cpu(), nrow=8)
+
+
+        image_name = "samples_" + str(epoch) + ".png"
+        trainer.logger.experiment.add_image("reconstructions", grid, epoch)
+        if self.save_to_disk:
+            save_image(grid, os.path.join(trainer.logger.log_dir, image_name))
+            print("sample image saved to ", os.path.join(trainer.logger.log_dir, image_name))
+
 
 
 def train_vae(args):
@@ -175,7 +206,7 @@ def train_vae(args):
                          gpus=1 if torch.cuda.is_available() else 0,
                          max_epochs=args.epochs,
                          callbacks=[save_callback, gen_callback],
-                         enable_progress_bar=args.progress_bar) 
+                         enable_progress_bar=args.progress_bar)
     trainer.logger._default_hp_metric = None  # Optional logging argument that we don't need
     if not args.progress_bar:
         print("[INFO] The progress bar has been suppressed. For updates on the training " + \
@@ -202,6 +233,7 @@ def train_vae(args):
         save_image(img_grid,
                    os.path.join(trainer.logger.log_dir, 'vae_manifold.png'),
                    normalize=False)
+        print("vae_manifold saved to ", os.path.join(trainer.logger.log_dir, 'vae_manifold.png'))
 
     return test_result
 
@@ -224,7 +256,7 @@ if __name__ == '__main__':
                         help='Minibatch size')
 
     # Other hyperparameters
-    parser.add_argument('--data_dir', default='../data/', type=str, 
+    parser.add_argument('--data_dir', default='../data/', type=str,
                         help='Directory where to look for the data. For jobs on Lisa, this should be $TMPDIR.')
     parser.add_argument('--epochs', default=80, type=int,
                         help='Max number of epochs')
@@ -242,4 +274,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     train_vae(args)
-
